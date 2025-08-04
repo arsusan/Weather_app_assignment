@@ -1,48 +1,78 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:weather_app/models/search_history_model.dart';
-import 'package:weather_app/services/auth_service.dart';
 import 'package:weather_app/services/firestore_service.dart';
-import 'package:weather_app/widgets/search_history_item.dart';
+import 'package:weather_app/services/auth_service.dart';
 
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({Key? key}) : super(key: key);
+  @override
+  _HistoryScreenState createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  late Future<List<SearchHistory>> _historyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = AuthService().currentUser;
+    if (user != null) {
+      _historyFuture = FirestoreService().getSearchHistory(user.uid).first;
+    } else {
+      _historyFuture = Future.value([]);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final authService = AuthService();
-    final user = authService.getCurrentUser();
-    final firestoreService = FirestoreService();
-
-    if (user == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Search History')),
-        body: const Center(
-          child: Text('You need to be logged in to view history'),
-        ),
-      );
-    }
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Search History')),
-      body: StreamBuilder<List<SearchHistory>>(
-        stream: firestoreService.getSearchHistory(user.uid),
+      appBar: AppBar(title: Text('Search History')),
+      body: FutureBuilder<List<SearchHistory>>(
+        future: _historyFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(child: CircularProgressIndicator());
           }
 
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No search history yet'));
+          if (snapshot.hasError) {
+            return Center(child: Text('Error loading history'));
           }
 
-          final historyItems = snapshot.data!;
+          final historyItems = snapshot.data ?? [];
+
+          if (historyItems.isEmpty) {
+            return Center(child: Text('No search history yet'));
+          }
 
           return ListView.builder(
             itemCount: historyItems.length,
             itemBuilder: (context, index) {
               final item = historyItems[index];
-              return SearchHistoryItem(
-                item: item,
-                onDelete: () => firestoreService.deleteSearchHistory(item.id),
+              return Dismissible(
+                key: Key(item.id),
+                background: Container(color: Colors.red),
+                onDismissed: (direction) {
+                  FirestoreService().deleteSearchHistory(item.id);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Deleted ${item.cityName}')),
+                  );
+                },
+                child: ListTile(
+                  title: Text(item.cityName),
+                  subtitle: Text(item.timestamp.toString()),
+                  trailing: IconButton(
+                    icon: Icon(Icons.delete),
+                    onPressed: () {
+                      FirestoreService().deleteSearchHistory(item.id);
+                      setState(() {
+                        _historyFuture = FirestoreService()
+                            .getSearchHistory(AuthService().currentUser!.uid)
+                            .first;
+                      });
+                    },
+                  ),
+                ),
               );
             },
           );

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:weather_app/models/weather_model.dart';
+import 'package:weather_app/screens/account_screen.dart';
 import 'package:weather_app/screens/history_screen.dart';
 import 'package:weather_app/services/auth_service.dart';
 import 'package:weather_app/services/firestore_service.dart';
@@ -9,21 +9,31 @@ import 'package:weather_app/widgets/loading_indicator.dart';
 import 'package:weather_app/widgets/weather_card.dart';
 
 class WeatherScreen extends StatefulWidget {
+  final Weather initialWeather;
+
+  const WeatherScreen({Key? key, required this.initialWeather})
+    : super(key: key);
+
   @override
   _WeatherScreenState createState() => _WeatherScreenState();
 }
 
 class _WeatherScreenState extends State<WeatherScreen> {
+  late Weather _weather;
   final TextEditingController _cityController = TextEditingController();
   final WeatherService _weatherService = WeatherService(
     apiKey: '8bbd47e936fda67e8974acbfb1b8c887',
   );
   final FirestoreService _firestoreService = FirestoreService();
   final AuthService _authService = AuthService();
-
-  Weather? _weather;
   bool _isLoading = false;
   String _errorMessage = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _weather = widget.initialWeather;
+  }
 
   @override
   void dispose() {
@@ -39,9 +49,7 @@ class _WeatherScreenState extends State<WeatherScreen> {
 
     try {
       final cityName = _cityController.text.trim();
-      if (cityName.isEmpty) {
-        throw Exception('Please enter a city name');
-      }
+      if (cityName.isEmpty) throw Exception('Please enter a city name');
 
       final weather = await _weatherService.getWeather(cityName);
       final user = _authService.getCurrentUser();
@@ -49,17 +57,13 @@ class _WeatherScreenState extends State<WeatherScreen> {
         await _firestoreService.addSearchHistory(user.uid, cityName);
       }
 
-      setState(() {
-        _weather = weather;
-      });
+      setState(() => _weather = weather);
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-      });
+      setState(
+        () => _errorMessage = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
@@ -81,9 +85,12 @@ class _WeatherScreenState extends State<WeatherScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await _authService.signOut();
+            icon: const Icon(Icons.account_circle),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => AccountScreen()),
+              );
             },
           ),
         ],
@@ -130,17 +137,8 @@ class _WeatherScreenState extends State<WeatherScreen> {
             const SizedBox(height: 20),
             if (_isLoading)
               const LoadingIndicator()
-            else if (_weather != null)
-              WeatherCard(weather: _weather!)
             else
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'Search for a city to see weather information',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                ),
-              ),
+              WeatherCard(weather: _weather),
           ],
         ),
       ),
